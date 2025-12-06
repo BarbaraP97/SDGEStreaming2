@@ -5,10 +5,11 @@ import (
 	"SDGEStreaming/internal/db"
 	"SDGEStreaming/internal/models"
 	"SDGEStreaming/internal/repositories"
+	"database/sql"
 	"fmt"
+	"strings"
 )
 
-// ContentService handles content-related business logic.
 type ContentService struct {
 	contentRepo repositories.ContentRepo
 }
@@ -17,8 +18,8 @@ func NewContentService(contentRepo repositories.ContentRepo) *ContentService {
 	return &ContentService{contentRepo: contentRepo}
 }
 
-// --- AUDIOVISUAL ---
-func (s *ContentService) CreateAudiovisual(title, contentType, genre string, duration int, ageRating, synopsis string, releaseYear int, director string) error {
+// AUDIOVISUAL
+func (s *ContentService) CreateAudiovisual(title, contentType, genre string, duration int, ageRating, synopsis string, releaseYear int, director, actors string) error {
 	content := &models.AudiovisualContent{
 		Title:       title,
 		Type:        contentType,
@@ -28,6 +29,7 @@ func (s *ContentService) CreateAudiovisual(title, contentType, genre string, dur
 		Synopsis:    synopsis,
 		ReleaseYear: releaseYear,
 		Director:    director,
+		Actors:      actors,
 	}
 	return s.contentRepo.CreateAudiovisual(content)
 }
@@ -44,7 +46,7 @@ func (s *ContentService) SearchAudiovisualByTitle(title string) ([]models.Audiov
 	return s.contentRepo.SearchAudiovisualByTitle(title)
 }
 
-// --- AUDIO ---
+// AUDIO
 func (s *ContentService) CreateAudio(title, contentType, genre string, duration int, ageRating, artist, album string, trackNumber int) error {
 	content := &models.AudioContent{
 		Title:       title,
@@ -71,27 +73,79 @@ func (s *ContentService) SearchAudioByTitle(title string) ([]models.AudioContent
 	return s.contentRepo.SearchAudioByTitle(title)
 }
 
-// --- CALIFICACIONES ---
-func (s *ContentService) RateContent(userID, contentID int, contentType string, rating float64) error {
+// BUSQUEDA AVANZADA
+func (s *ContentService) SearchByTitle(query, ageRating string) []interface{} {
+	var results []interface{}
+	
+	avs, _ := s.contentRepo.SearchAudiovisualByTitle(query)
+	for _, av := range avs {
+		if isContentAllowed(av.AgeRating, ageRating) {
+			results = append(results, av)
+		}
+	}
+	
+	audios, _ := s.contentRepo.SearchAudioByTitle(query)
+	for _, a := range audios {
+		if isContentAllowed(a.AgeRating, ageRating) {
+			results = append(results, a)
+		}
+	}
+	
+	return results
+}
+
+func (s *ContentService) SearchByGenre(genre, ageRating string) []interface{} {
+	var results []interface{}
+	
+	avs, _ := s.contentRepo.FindAllAudiovisual()
+	for _, av := range avs {
+		if strings.Contains(strings.ToLower(av.Genre), strings.ToLower(genre)) && isContentAllowed(av.AgeRating, ageRating) {
+			results = append(results, av)
+		}
+	}
+	
+	audios, _ := s.contentRepo.FindAllAudio()
+	for _, a := range audios {
+		if strings.Contains(strings.ToLower(a.Genre), strings.ToLower(genre)) && isContentAllowed(a.AgeRating, ageRating) {
+			results = append(results, a)
+		}
+	}
+	
+	return results
+}
+
+func (s *ContentService) SearchByActor(actor, ageRating string) []models.AudiovisualContent {
+	var results []models.AudiovisualContent
+	
+	avs, _ := s.contentRepo.FindAllAudiovisual()
+	for _, av := range avs {
+		if strings.Contains(strings.ToLower(av.Actors), strings.ToLower(actor)) && isContentAllowed(av.AgeRating, ageRating) {
+			results = append(results, av)
+		}
+	}
+	
+	return results
+}
+
+// CALIFICACIONES
+func (s *ContentService) RateContent(profileID, contentID int, contentType string, rating float64) error {
 	if rating < 1.0 || rating > 10.0 {
-		return fmt.Errorf("la calificación debe estar entre 1.0 y 10.0")
+		return fmt.Errorf("la calificacion debe estar entre 1.0 y 10.0")
 	}
 	
 	conn := db.GetDB()
 	
-	// Insertar o actualizar calificación
 	_, err := conn.Exec(`
-		INSERT INTO user_ratings (user_id, content_id, content_type, rating)
+		INSERT INTO user_ratings (profile_id, content_id, content_type, rating)
 		VALUES (?, ?, ?, ?)
-		ON CONFLICT(user_id, content_id, content_type) 
+		ON CONFLICT(profile_id, content_id, content_type) 
 		DO UPDATE SET rating = ?, rated_at = CURRENT_TIMESTAMP
-	`, userID, contentID, contentType, rating, rating)
+	`, profileID, contentID, contentType, rating, rating)
 	
 	if err != nil {
-		return fmt.Errorf("error al guardar calificación: %w", err)
+		return fmt.Errorf("error al guardar calificacion: %w", err)
 	}
 	
-	// Recalcular promedio
 	return s.updateAverageRating(contentID, contentType)
 }
 
@@ -110,4 +164,11 @@ func (s *ContentService) updateAverageRating(contentID int, contentType string) 
 	}
 	
 	return s.contentRepo.UpdateAverageRating(contentID, contentType, avgRating)
+}
+
+func isContentAllowed(contentRating, profileRating string) bool {
+	ratings := map[string]int{"G": 1, "PG": 2, "PG-13": 3, "R": 4, "General": 1, "Explicit": 4}
+	contentLevel := ratings[contentRating]
+	profileLevel := ratings[profileRating]
+	return contentLevel <= profileLevel
 }

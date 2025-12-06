@@ -9,9 +9,9 @@ import (
 
 type PlaybackHistoryRepo interface {
 	Create(history *models.PlaybackHistory) error
-	UpdateProgress(userID, contentID int, contentType string, progress int) error
-	FindByUserID(userID int) ([]models.PlaybackHistory, error)
-	FindContinueWatching(userID int) ([]models.PlaybackHistory, error)
+	UpdateProgress(profileID, contentID int, contentType string, progress int) error
+	FindByProfileID(profileID int) ([]models.PlaybackHistory, error)
+	FindContinueWatching(profileID int) ([]models.PlaybackHistory, error)
 }
 
 type sqlitePlaybackHistoryRepo struct {
@@ -26,11 +26,11 @@ func NewPlaybackHistoryRepo() PlaybackHistoryRepo {
 
 func (r *sqlitePlaybackHistoryRepo) Create(h *models.PlaybackHistory) error {
 	query := `
-		INSERT INTO playback_history (user_id, content_id, content_type, progress_seconds)
+		INSERT INTO playback_history (profile_id, content_id, content_type, progress_seconds)
 		VALUES (?, ?, ?, ?)
 	`
 
-	_, err := r.conn.Exec(query, h.UserID, h.ContentID, h.ContentType, h.Progress)
+	_, err := r.conn.Exec(query, h.ProfileID, h.ContentID, h.ContentType, h.Progress)
 	if err != nil {
 		return fmt.Errorf("error inserting playback history: %w", err)
 	}
@@ -38,14 +38,14 @@ func (r *sqlitePlaybackHistoryRepo) Create(h *models.PlaybackHistory) error {
 	return nil
 }
 
-func (r *sqlitePlaybackHistoryRepo) UpdateProgress(userID, contentID int, contentType string, progress int) error {
+func (r *sqlitePlaybackHistoryRepo) UpdateProgress(profileID, contentID int, contentType string, progress int) error {
 	query := `
 		UPDATE playback_history
 		SET progress_seconds = ?, watched_at = CURRENT_TIMESTAMP
-		WHERE user_id = ? AND content_id = ? AND content_type = ?
+		WHERE profile_id = ? AND content_id = ? AND content_type = ?
 	`
 
-	res, err := r.conn.Exec(query, progress, userID, contentID, contentType)
+	res, err := r.conn.Exec(query, progress, profileID, contentID, contentType)
 	if err != nil {
 		return fmt.Errorf("error updating playback progress: %w", err)
 	}
@@ -58,15 +58,16 @@ func (r *sqlitePlaybackHistoryRepo) UpdateProgress(userID, contentID int, conten
 	return nil
 }
 
-func (r *sqlitePlaybackHistoryRepo) FindByUserID(userID int) ([]models.PlaybackHistory, error) {
+func (r *sqlitePlaybackHistoryRepo) FindByProfileID(profileID int) ([]models.PlaybackHistory, error) {
 	query := `
-		SELECT id, user_id, content_id, content_type, progress_seconds, watched_at
+		SELECT id, profile_id, content_id, content_type, progress_seconds, is_completed, watched_at
 		FROM playback_history
-		WHERE user_id = ?
+		WHERE profile_id = ?
 		ORDER BY watched_at DESC
+		LIMIT 50
 	`
 
-	rows, err := r.conn.Query(query, userID)
+	rows, err := r.conn.Query(query, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching playback history: %w", err)
 	}
@@ -76,7 +77,7 @@ func (r *sqlitePlaybackHistoryRepo) FindByUserID(userID int) ([]models.PlaybackH
 
 	for rows.Next() {
 		var h models.PlaybackHistory
-		if err := rows.Scan(&h.ID, &h.UserID, &h.ContentID, &h.ContentType, &h.Progress, &h.WatchedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.ProfileID, &h.ContentID, &h.ContentType, &h.Progress, &h.IsCompleted, &h.WatchedAt); err != nil {
 			return nil, fmt.Errorf("error scanning playback history: %w", err)
 		}
 		history = append(history, h)
@@ -85,17 +86,18 @@ func (r *sqlitePlaybackHistoryRepo) FindByUserID(userID int) ([]models.PlaybackH
 	return history, nil
 }
 
-func (r *sqlitePlaybackHistoryRepo) FindContinueWatching(userID int) ([]models.PlaybackHistory, error) {
+func (r *sqlitePlaybackHistoryRepo) FindContinueWatching(profileID int) ([]models.PlaybackHistory, error) {
 	query := `
-		SELECT id, user_id, content_id, content_type, progress_seconds, watched_at
+		SELECT id, profile_id, content_id, content_type, progress_seconds, is_completed, watched_at
 		FROM playback_history
-		WHERE user_id = ?
+		WHERE profile_id = ?
 		AND progress_seconds > 0
+		AND is_completed = 0
 		ORDER BY watched_at DESC
 		LIMIT 20
 	`
 
-	rows, err := r.conn.Query(query, userID)
+	rows, err := r.conn.Query(query, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching continue-watching list: %w", err)
 	}
@@ -105,7 +107,7 @@ func (r *sqlitePlaybackHistoryRepo) FindContinueWatching(userID int) ([]models.P
 
 	for rows.Next() {
 		var h models.PlaybackHistory
-		if err := rows.Scan(&h.ID, &h.UserID, &h.ContentID, &h.ContentType, &h.Progress, &h.WatchedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.ProfileID, &h.ContentID, &h.ContentType, &h.Progress, &h.IsCompleted, &h.WatchedAt); err != nil {
 			return nil, fmt.Errorf("error scanning continue-watching rows: %w", err)
 		}
 		history = append(history, h)

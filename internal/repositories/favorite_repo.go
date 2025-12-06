@@ -9,8 +9,8 @@ import (
 
 type FavoriteRepo interface {
 	Create(f *models.Favorite) error
-	Delete(userID, contentID int, contentType string) error
-	FindByUserID(userID int) ([]models.Favorite, error)
+	Delete(profileID, contentID int, contentType string) error
+	FindByProfileID(profileID int) ([]models.Favorite, error)
 }
 
 type sqliteFavoriteRepo struct {
@@ -25,11 +25,11 @@ func NewFavoriteRepo() FavoriteRepo {
 
 func (r *sqliteFavoriteRepo) Create(f *models.Favorite) error {
 	query := `
-		INSERT INTO favorites (user_id, content_id, content_type)
+		INSERT INTO favorites (profile_id, content_id, content_type)
 		VALUES (?, ?, ?)
 	`
 
-	_, err := r.conn.Exec(query, f.UserID, f.ContentID, f.ContentType)
+	_, err := r.conn.Exec(query, f.ProfileID, f.ContentID, f.ContentType)
 	if err != nil {
 		return fmt.Errorf("error adding favorite: %w", err)
 	}
@@ -37,13 +37,13 @@ func (r *sqliteFavoriteRepo) Create(f *models.Favorite) error {
 	return nil
 }
 
-func (r *sqliteFavoriteRepo) Delete(userID, contentID int, contentType string) error {
+func (r *sqliteFavoriteRepo) Delete(profileID, contentID int, contentType string) error {
 	query := `
 		DELETE FROM favorites
-		WHERE user_id = ? AND content_id = ? AND content_type = ?
+		WHERE profile_id = ? AND content_id = ? AND content_type = ?
 	`
 
-	res, err := r.conn.Exec(query, userID, contentID, contentType)
+	res, err := r.conn.Exec(query, profileID, contentID, contentType)
 	if err != nil {
 		return fmt.Errorf("error deleting favorite: %w", err)
 	}
@@ -56,15 +56,15 @@ func (r *sqliteFavoriteRepo) Delete(userID, contentID int, contentType string) e
 	return nil
 }
 
-func (r *sqliteFavoriteRepo) FindByUserID(userID int) ([]models.Favorite, error) {
+func (r *sqliteFavoriteRepo) FindByProfileID(profileID int) ([]models.Favorite, error) {
 	query := `
-		SELECT id, user_id, content_id, content_type, added_at
+		SELECT id, profile_id, content_id, content_type, added_at
 		FROM favorites
-		WHERE user_id = ?
+		WHERE profile_id = ?
 		ORDER BY added_at DESC
 	`
 
-	rows, err := r.conn.Query(query, userID)
+	rows, err := r.conn.Query(query, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching favorites: %w", err)
 	}
@@ -74,7 +74,7 @@ func (r *sqliteFavoriteRepo) FindByUserID(userID int) ([]models.Favorite, error)
 
 	for rows.Next() {
 		var f models.Favorite
-		if err := rows.Scan(&f.ID, &f.UserID, &f.ContentID, &f.ContentType, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.ProfileID, &f.ContentID, &f.ContentType, &f.CreatedAt); err != nil {
 			return nil, fmt.Errorf("error scanning favorite row: %w", err)
 		}
 		favorites = append(favorites, f)
