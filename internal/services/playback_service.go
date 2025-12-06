@@ -1,5 +1,3 @@
-// internal/services/playback_service.go
-// Gestiona el historial de reproducción, favoritos y progreso del usuario.
 package services
 
 import (
