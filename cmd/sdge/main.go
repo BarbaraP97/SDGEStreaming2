@@ -34,6 +34,17 @@ var (
 	reportService       *services.ReportService
 )
 
+func initSampleContent() {
+	contentService.CreateAudiovisual("El Viaje Infinito", "movie", "Ciencia Ficcion", 142, "PG-13",
+		"Una aventura epica espacial", 2023, "John Doe", "Tom Hardy, Anne Hathaway")
+	contentService.CreateAudiovisual("La Serie Misteriosa", "series", "Misterio", 45, "PG-13",
+		"Misterios sin resolver", 2024, "Jane Smith", "Benedict Cumberbatch")
+	contentService.CreateAudiovisual("Aventuras Animadas", "series", "Animacion", 25, "G",
+		"Serie para toda la familia", 2024, "Peter Johnson", "N/A")
+	contentService.CreateAudio("Sinfonia del Amanecer", "song", "Clasica", 5, "General", "Beethoven", "Clasicos", 1)
+	contentService.CreateAudio("Podcast Tech", "podcast", "Tecnologia", 60, "General", "Tech Talk", "Temporada 1", 1)
+}
+
 func main() {
 	if err := db.InitDB("sdgestreaming.db"); err != nil {
 		fmt.Printf("[ERROR] Error fatal al iniciar la base de datos: %v\n", err)
@@ -836,51 +847,7 @@ func showAudioDetails(content *models.AudioContent) {
 	}
 }
 
-func showAudioDetails(content *models.AudioContent) {
-	for {
-		utils.ClearScreen()
-		fmt.Println("=========================================")
-		fmt.Printf("        %s\n", content.Title)
-		fmt.Println("=========================================")
-		fmt.Println()
-		fmt.Printf("Artista: %s\n", content.Artist)
-		fmt.Printf("Album: %s\n", content.Album)
-		fmt.Printf("Tipo: %s\n", content.Type)
-		fmt.Printf("Genero: %s\n", content.Genre)
-		fmt.Printf("Duracion: %d minutos\n", content.Duration)
-		fmt.Printf("Clasificacion: %s\n", content.AgeRating)
-		fmt.Printf("Calificacion: %.1f/10\n", content.AverageRating)
-		fmt.Println()
-		fmt.Println("  [1] Reproducir")
-		fmt.Println("  [2] Agregar a Mi Lista")
-		fmt.Println("  [3] Agregar a Playlist")
-		fmt.Println("  [4] Calificar")
-		fmt.Println("  [0] Volver")
-		fmt.Println()
-		fmt.Print("Seleccione: ")
 
-		option := utils.ReadLine("")
-		switch option {
-		case "1":
-			playAudio(content.ID)
-			return
-		case "2":
-			err := playbackService.AddFavorite(currentProfile.ID, content.ID, "audio")
-			if err != nil {
-				fmt.Printf("\n[ERROR] %v\n", err)
-			} else {
-				fmt.Println("\n[OK] Agregado a Mi Lista")
-			}
-			time.Sleep(2 * time.Second)
-		case "3":
-			addToPlaylist(content.ID, "audio")
-		case "4":
-			rateContent(content.ID, "audio")
-		case "0":
-			return
-		}
-	}
-}
 
 func playContentByID(contentID int) {
 	av, err := contentService.GetAudiovisualByID(contentID)

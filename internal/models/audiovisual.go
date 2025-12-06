@@ -12,6 +12,7 @@ type AudiovisualContent struct {
 	Synopsis      string  `db:"synopsis"`
 	ReleaseYear   int     `db:"release_year"`
 	Director      string  `db:"director"`
+	Actors		string  `db:"actors"`
 	AverageRating float64 `db:"average_rating"`
 	IsAvailable   bool    `db:"is_available"`
 }

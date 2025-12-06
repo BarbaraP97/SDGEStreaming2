@@ -4,7 +4,6 @@ package repositories
 import (
 	"SDGEStreaming/internal/db"
 	"SDGEStreaming/internal/models"
-	"database/sql"
 )
 
 type PlaylistRepo interface {

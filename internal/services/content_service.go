@@ -5,7 +5,6 @@ import (
 	"SDGEStreaming/internal/db"
 	"SDGEStreaming/internal/models"
 	"SDGEStreaming/internal/repositories"
-	"database/sql"
 	"fmt"
 	"strings"
 )
