@@ -22,6 +22,7 @@ type ContentRepo interface {
 	// Compartido
 	UpdateAvailability(contentID int, contentType string, available bool) error
 	UpdateAverageRating(contentID int, contentType string, rating float64) error
+	GetDB() *sql.DB
 }
 
 type sqliteContentRepo struct {
@@ -32,6 +33,10 @@ func NewContentRepo() ContentRepo {
 	return &sqliteContentRepo{
 		conn: db.GetDB(),
 	}
+}
+
+func (r *sqliteContentRepo) GetDB() *sql.DB {
+	return r.conn
 }
 
 //
@@ -117,7 +122,6 @@ func (r *sqliteContentRepo) FindAllAudiovisual() ([]models.AudiovisualContent, e
 	return list, nil
 }
 
-// SearchAudiovisualByTitle implements ContentRepo.
 func (r *sqliteContentRepo) SearchAudiovisualByTitle(title string) ([]models.AudiovisualContent, error) {
 	query := `
 		SELECT id, title, type, genre, duration, age_rating,
@@ -231,7 +235,6 @@ func (r *sqliteContentRepo) FindAllAudio() ([]models.AudioContent, error) {
 	return list, nil
 }
 
-// SearchAudioByTitle implements ContentRepo.
 func (r *sqliteContentRepo) SearchAudioByTitle(title string) ([]models.AudioContent, error) {
 	query := `
 		SELECT id, title, type, genre, duration, age_rating,

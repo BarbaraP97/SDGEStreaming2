@@ -1,20 +1,26 @@
+/* @Programa principal del proyecto SDGEStreaming - Programación orientada a objetos
+   @Autores: Nelson Espinosa, Barbara Peñaherrera
+   @Domingo 7 de diciembre de 2025. Quito - Ecuador
+   @Punto de entrada del sistema. Contiene el menú interactivo y la lógica de control principal que orquesta las interacciones con los módulos y la base de datos.*/
 // cmd/sdge/main.go
 package main
 
 import (
 	"SDGEStreaming/internal/db"
+	"SDGEStreaming/internal/models"
 	"SDGEStreaming/internal/repositories"
+	"SDGEStreaming/internal/security"
 	"SDGEStreaming/internal/services"
 	"SDGEStreaming/internal/utils"
 	"fmt"
 	"os"
+	"time"
 )
 
-// Variables globales para la sesión del usuario.
 var (
 	currentUser *CurrentUser
 )
-// CurrentUser es una estructura simplificada para la sesión actual.
+
 type CurrentUser struct {
 	ID        int
 	Name      string
@@ -26,7 +32,6 @@ type CurrentUser struct {
 	IsAdmin   bool
 }
 
-// Servicios globales para la aplicación.
 var (
 	userService         *services.UserService
 	contentService      *services.ContentService
@@ -35,21 +40,37 @@ var (
 )
 
 func main() {
-	// Inicializar la base de datos
 	if err := db.InitDB("sdgestreaming.db"); err != nil {
 		fmt.Printf("Error fatal al iniciar la base de datos: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.DB.Close()
+	defer db.Close()
 
-	// Inicializar Repositorios
+	// Crear usuario admin si no existe
 	userRepo := repositories.NewUserRepo()
+	adminUser, _ := userRepo.FindByEmail("admin@sdge.com")
+	if adminUser == nil {
+		hashedPass, _ := security.HashPassword("admin123")
+		now := time.Now()
+		adminModel := &models.User{
+			Name:         "Admin",
+			Email:        "admin@sdge.com",
+			Age:          30,
+			PlanID:       3,
+			AgeRating:    "Adulto",
+			IsAdmin:      true,
+			PasswordHash: hashedPass,
+			CreatedAt:    now,
+			LastLogin:    now,
+		}
+		userRepo.Create(adminModel)
+	}
+
 	contentRepo := repositories.NewContentRepo()
 	subscriptionRepo := repositories.NewSubscriptionRepo()
 	playbackHistoryRepo := repositories.NewPlaybackHistoryRepo()
 	favoriteRepo := repositories.NewFavoriteRepo()
 
-	// Inicializar Servicios
 	userService = services.NewUserService(userRepo, subscriptionRepo)
 	contentService = services.NewContentService(contentRepo)
 	subscriptionService = services.NewSubscriptionService(subscriptionRepo, userRepo)
@@ -109,7 +130,6 @@ func login() {
 		return
 	}
 
-	// Mapear el ID del plan a su nombre
 	planName := getPlanName(user.PlanID)
 
 	currentUser = &CurrentUser{
@@ -209,15 +229,12 @@ func showMainMenu() {
 	utils.WaitForEnter()
 }
 
-// --- Funciones de Menú ---
-
 func showHome() {
 	utils.ClearScreen()
 	fmt.Println("Inicio")
 	fmt.Println("=====")
 	fmt.Println("¡Bienvenido a tu página de inicio!\n")
 
-	// Mostrar "Continuar viendo"
 	fmt.Println("► Continuar viendo:")
 	continueWatching, _ := playbackService.GetContinueWatching(currentUser.ID)
 	if len(continueWatching) == 0 {
@@ -237,7 +254,7 @@ func showHome() {
 				}
 			}
 			if title != "" {
-				fmt.Printf("  • %s (ID: %d)\n", title, entry.ContentID)
+				fmt.Printf("  * %s (ID: %d)\n", title, entry.ContentID)
 			}
 		}
 	}
@@ -257,7 +274,7 @@ func showTrending() {
 		if i >= 3 {
 			break
 		}
-		fmt.Printf("  %d. %s (%.1f )\n", i+1, av.Title, av.AverageRating)
+		fmt.Printf("  %d. %s (%.1f)\n", i+1, av.Title, av.AverageRating)
 	}
 
 	fmt.Println("\n Contenido de Audio Popular:")
@@ -266,7 +283,7 @@ func showTrending() {
 		if i >= 3 {
 			break
 		}
-		fmt.Printf("  %d. %s - %s (%.1f )\n", i+1, a.Artist, a.Title, a.AverageRating)
+		fmt.Printf("  %d. %s - %s (%.1f)\n", i+1, a.Artist, a.Title, a.AverageRating)
 	}
 
 	utils.WaitForEnter()
@@ -311,16 +328,17 @@ func browseAudiovisual(isGuest bool) {
 		return
 	}
 
+	utils.ClearScreen()
 	fmt.Println("\nContenido Audiovisual Disponible:")
 	for _, c := range contents {
 		fmt.Printf("ID: %d | %s (%s)\n", c.ID, c.Title, c.Type)
 		fmt.Printf("   Género: %s | Duración: %d min | Clasificación: %s\n", c.Genre, c.Duration, c.AgeRating)
-		fmt.Printf("   Promedio: %.1f \n", c.AverageRating)
+		fmt.Printf("   Promedio: %.1f\n", c.AverageRating)
 		fmt.Println("──────────────────────────────────────────────────────")
 	}
 
 	if !isGuest {
-		contentIDStr := utils.ReadLine("Ingrese el ID del contenido para ver detalles (0 para volver): ")
+		contentIDStr := utils.ReadLine("\nIngrese el ID del contenido para ver detalles (0 para volver): ")
 		if contentIDStr == "0" {
 			return
 		}
@@ -347,11 +365,17 @@ func browseAudiovisual(isGuest bool) {
 		fmt.Printf("Año: %d\n", content.ReleaseYear)
 		fmt.Printf("Duración: %d minutos\n", content.Duration)
 		fmt.Printf("Clasificación: %s\n", content.AgeRating)
-		fmt.Printf("Promedio de calificación: %.1f \n", content.AverageRating)
-		fmt.Println("\n1. Marcar como favorito")
-		fmt.Println("2. Volver")
+		fmt.Printf("Promedio de calificación: %.1f\n", content.AverageRating)
+		fmt.Println("\n1. Reproducir")
+		fmt.Println("2. Marcar como favorito")
+		fmt.Println("3. Calificar")
+		fmt.Println("4. Volver")
 		action := utils.ReadLine("Seleccione una acción: ")
-		if action == "1" {
+		
+		switch action {
+		case "1":
+			playAudiovisual(contentID)
+		case "2":
 			err = playbackService.AddFavorite(currentUser.ID, contentID, "audiovisual")
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -359,6 +383,10 @@ func browseAudiovisual(isGuest bool) {
 				fmt.Println("¡Agregado a Mi Lista!")
 			}
 			utils.WaitForEnter()
+		case "3":
+			rateContent(contentID, "audiovisual")
+		case "4":
+			return
 		}
 	}
 }
@@ -377,17 +405,18 @@ func browseAudio(isGuest bool) {
 		return
 	}
 
+	utils.ClearScreen()
 	fmt.Println("\nContenido de Audio Disponible:")
 	for _, c := range contents {
 		fmt.Printf("ID: %d | %s - %s\n", c.ID, c.Artist, c.Title)
 		fmt.Printf("   Tipo: %s | Género: %s | Álbum: %s\n", c.Type, c.Genre, c.Album)
 		fmt.Printf("   Duración: %d min | Clasificación: %s\n", c.Duration, c.AgeRating)
-		fmt.Printf("   Promedio: %.1f \n", c.AverageRating)
+		fmt.Printf("   Promedio: %.1f\n", c.AverageRating)
 		fmt.Println("──────────────────────────────────────────────────────")
 	}
 
 	if !isGuest {
-		contentIDStr := utils.ReadLine("Ingrese el ID del contenido para ver detalles (0 para volver): ")
+		contentIDStr := utils.ReadLine("\nIngrese el ID del contenido para ver detalles (0 para volver): ")
 		if contentIDStr == "0" {
 			return
 		}
@@ -412,11 +441,17 @@ func browseAudio(isGuest bool) {
 		fmt.Printf("Género: %s\n", content.Genre)
 		fmt.Printf("Duración: %d minutos\n", content.Duration)
 		fmt.Printf("Clasificación: %s\n", content.AgeRating)
-		fmt.Printf("Promedio de calificación: %.1f \n", content.AverageRating)
-		fmt.Println("\n1. Marcar como favorito")
-		fmt.Println("2. Volver")
+		fmt.Printf("Promedio de calificación: %.1f\n", content.AverageRating)
+		fmt.Println("\n1. Reproducir")
+		fmt.Println("2. Marcar como favorito")
+		fmt.Println("3. Calificar")
+		fmt.Println("4. Volver")
 		action := utils.ReadLine("Seleccione una acción: ")
-		if action == "1" {
+		
+		switch action {
+		case "1":
+			playAudio(contentID)
+		case "2":
 			err = playbackService.AddFavorite(currentUser.ID, contentID, "audio")
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -424,6 +459,10 @@ func browseAudio(isGuest bool) {
 				fmt.Println("¡Agregado a Mi Lista!")
 			}
 			utils.WaitForEnter()
+		case "3":
+			rateContent(contentID, "audio")
+		case "4":
+			return
 		}
 	}
 }
@@ -463,7 +502,7 @@ func showMyList() {
 			}
 		}
 		if title != "" {
-			fmt.Printf("• %s\n", title)
+			fmt.Printf("* %s\n", title)
 			fmt.Printf("  %s\n", details)
 			fmt.Println("──────────────────────────────────────────────────────")
 		}
@@ -537,7 +576,7 @@ func viewPlaybackHistory() {
 			}
 		}
 		if title != "" {
-			fmt.Printf("• %s (%s)\n", title, entry.ContentType)
+			fmt.Printf("* %s (%s)\n", title, entry.ContentType)
 		}
 	}
 	utils.WaitForEnter()
@@ -560,7 +599,10 @@ func upgradePlan() {
 		fmt.Printf("%d. %s - $%.2f/mes\n", p.ID, p.Name, p.Price)
 	}
 
-	planIDStr := utils.ReadLine("Seleccione el número del plan deseado: ")
+	planIDStr := utils.ReadLine("\nSeleccione el número del plan deseado (0 para cancelar): ")
+	if planIDStr == "0" {
+		return
+	}
 	planID, err := utils.ToInt(planIDStr)
 	if err != nil {
 		fmt.Println("Selección inválida.")
@@ -575,7 +617,6 @@ func upgradePlan() {
 	}
 
 	if planID == 1 {
-		// Plan gratuito
 		err = userService.UpdateUserPlan(currentUser.ID, 1)
 		if err != nil {
 			fmt.Printf("Error al actualizar el plan: %v\n", err)
@@ -589,14 +630,12 @@ func upgradePlan() {
 		return
 	}
 
-	// Simular pago
 	fmt.Println("\n--- Información de Pago ---")
 	cardHolder := utils.ReadLine("Nombre del titular de la tarjeta: ")
-	cardNumber := utils.ReadLine("Número de tarjeta (sin espacios): ")
+	cardNumber := utils.ReadLine("Número de tarjeta (16 dígitos): ")
 	expiry := utils.ReadLine("Fecha de vencimiento (MM/AAAA): ")
 	cvvStr := utils.ReadLine("CVV (3 dígitos): ")
 
-	// Validar fecha de vencimiento
 	var expiryMonth, expiryYear int
 	if len(expiry) == 7 && expiry[2] == '/' {
 		expiryMonth, _ = utils.ToInt(expiry[0:2])
@@ -621,7 +660,6 @@ func upgradePlan() {
 		return
 	}
 
-	// Actualizar la sesión
 	currentUser.PlanID = planID
 	currentUser.PlanName = getPlanName(planID)
 	fmt.Println("¡Su plan ha sido actualizado exitosamente!")
@@ -690,14 +728,139 @@ func manageUsers() {
 }
 
 func manageContent() {
+	for {
+		utils.ClearScreen()
+		fmt.Println("Gestión de Contenido")
+		fmt.Println("====================")
+		fmt.Println("1. Agregar Contenido Audiovisual")
+		fmt.Println("2. Agregar Contenido de Audio")
+		fmt.Println("3. Listar Contenido Audiovisual")
+		fmt.Println("4. Listar Contenido de Audio")
+		fmt.Println("5. Volver")
+		fmt.Print("\nSeleccione una opción: ")
+		
+		option := utils.ReadLine("")
+		switch option {
+		case "1":
+			addAudiovisualContent()
+		case "2":
+			addAudioContent()
+		case "3":
+			listAudiovisualAdmin()
+		case "4":
+			listAudioAdmin()
+		case "5":
+			return
+		default:
+			fmt.Println("Opción inválida.")
+			utils.WaitForEnter()
+		}
+	}
+}
+
+func addAudiovisualContent() {
 	utils.ClearScreen()
-	fmt.Println("Gestión de Contenido")
-	fmt.Println("====================")
-	fmt.Println("1. Agregar Contenido Audiovisual")
-	fmt.Println("2. Agregar Contenido de Audio")
-	fmt.Println("3. Volver")
-	fmt.Print("\nSeleccione una opción: ")
-	// La lógica para agregar contenido se puede implementar aquí.
+	fmt.Println("Agregar Contenido Audiovisual")
+	fmt.Println("============================")
+	
+	title := utils.ReadLine("Título: ")
+	contentType := utils.ReadLine("Tipo (movie/series/documentary): ")
+	genre := utils.ReadLine("Género: ")
+	durationStr := utils.ReadLine("Duración (minutos): ")
+	duration, err := utils.ToInt(durationStr)
+	if err != nil {
+		fmt.Println("Duración inválida.")
+		utils.WaitForEnter()
+		return
+	}
+	
+	ageRating := utils.ReadLine("Clasificación (G/PG/PG-13/R): ")
+	synopsis := utils.ReadLine("Sinopsis: ")
+	yearStr := utils.ReadLine("Año de lanzamiento: ")
+	year, err := utils.ToInt(yearStr)
+	if err != nil {
+		fmt.Println("Año inválido.")
+		utils.WaitForEnter()
+		return
+	}
+	director := utils.ReadLine("Director: ")
+	
+	err = contentService.CreateAudiovisual(title, contentType, genre, duration, ageRating, synopsis, year, director)
+	if err != nil {
+		fmt.Printf("Error al agregar contenido: %v\n", err)
+	} else {
+		fmt.Println("¡Contenido agregado exitosamente!")
+	}
+	utils.WaitForEnter()
+}
+
+func addAudioContent() {
+	utils.ClearScreen()
+	fmt.Println("Agregar Contenido de Audio")
+	fmt.Println("==========================")
+	
+	title := utils.ReadLine("Título: ")
+	contentType := utils.ReadLine("Tipo (song/podcast/audiobook): ")
+	genre := utils.ReadLine("Género: ")
+	durationStr := utils.ReadLine("Duración (minutos): ")
+	duration, err := utils.ToInt(durationStr)
+	if err != nil {
+		fmt.Println("Duración inválida.")
+		utils.WaitForEnter()
+		return
+	}
+	
+	ageRating := utils.ReadLine("Clasificación (General/Explicit): ")
+	artist := utils.ReadLine("Artista: ")
+	album := utils.ReadLine("Álbum: ")
+	trackStr := utils.ReadLine("Número de pista: ")
+	trackNumber, err := utils.ToInt(trackStr)
+	if err != nil {
+		trackNumber = 1
+	}
+	
+	err = contentService.CreateAudio(title, contentType, genre, duration, ageRating, artist, album, trackNumber)
+	if err != nil {
+		fmt.Printf("Error al agregar contenido: %v\n", err)
+	} else {
+		fmt.Println("¡Contenido agregado exitosamente!")
+	}
+	utils.WaitForEnter()
+}
+
+func listAudiovisualAdmin() {
+	utils.ClearScreen()
+	fmt.Println("Lista de Contenido Audiovisual")
+	fmt.Println("==============================")
+	
+	contents, err := contentService.GetAllAudiovisual()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		utils.WaitForEnter()
+		return
+	}
+	
+	for _, c := range contents {
+		fmt.Printf("ID: %d | %s (%s) - %d min\n", c.ID, c.Title, c.Type, c.Duration)
+	}
+	utils.WaitForEnter()
+}
+
+func listAudioAdmin() {
+	utils.ClearScreen()
+	fmt.Println("Lista de Contenido de Audio")
+	fmt.Println("===========================")
+	
+	contents, err := contentService.GetAllAudio()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		utils.WaitForEnter()
+		return
+	}
+	
+	for _, c := range contents {
+		fmt.Printf("ID: %d | %s - %s (%s) - %d min\n", c.ID, c.Artist, c.Title, c.Type, c.Duration)
+	}
 	utils.WaitForEnter()
 }
 
@@ -705,10 +868,20 @@ func generateReports() {
 	utils.ClearScreen()
 	fmt.Println("Generación de Reportes")
 	fmt.Println("======================")
-	fmt.Println("• Total de Usuarios: 150")
-	fmt.Println("• Ingresos Mensuales: $1,250.00")
-	fmt.Println("• Contenido más visto: 'El Viaje Infinito'")
-	fmt.Println("• Contenido de audio más escuchado: 'Sinfonía del Amanecer'")
+	users, _ := userService.GetAllUsers()
+	audiovisuals, _ := contentService.GetAllAudiovisual()
+	audios, _ := contentService.GetAllAudio()
+	
+	fmt.Printf("* Total de Usuarios: %d\n", len(users))
+	fmt.Printf("* Total de Contenido Audiovisual: %d\n", len(audiovisuals))
+	fmt.Printf("* Total de Contenido de Audio: %d\n", len(audios))
+	
+	if len(audiovisuals) > 0 {
+		fmt.Printf("* Contenido más popular: '%s'\n", audiovisuals[0].Title)
+	}
+	if len(audios) > 0 {
+		fmt.Printf("* Audio más popular: '%s - %s'\n", audios[0].Artist, audios[0].Title)
+	}
 	utils.WaitForEnter()
 }
 
@@ -718,7 +891,6 @@ func logout() {
 	utils.WaitForEnter()
 }
 
-// Función auxiliar para mapear ID de plan a nombre.
 func getPlanName(planID int) string {
 	switch planID {
 	case 1:
@@ -730,4 +902,84 @@ func getPlanName(planID int) string {
 	default:
 		return "Desconocido"
 	}
+}
+
+func playAudiovisual(contentID int) {
+	content, err := contentService.GetAudiovisualByID(contentID)
+	if err != nil {
+		fmt.Println("Error al cargar contenido.")
+		utils.WaitForEnter()
+		return
+	}
+	
+	utils.ClearScreen()
+	fmt.Printf("▶ Reproduciendo: %s\n", content.Title)
+	fmt.Println("=====================================")
+	fmt.Println("Simulando reproducción...")
+	fmt.Println("[████████████████████████████] 100%")
+	fmt.Printf("Duración total: %d minutos\n", content.Duration)
+	fmt.Println("=====================================")
+	
+	// Registrar en historial
+	playbackService.AddToHistory(currentUser.ID, contentID, "audiovisual")
+	
+	// Simular progreso (50% visto)
+	progressSeconds := (content.Duration * 60) / 2
+	playbackService.UpdateProgress(currentUser.ID, contentID, "audiovisual", progressSeconds)
+	
+	fmt.Println("\n✓ Reproducción finalizada")
+	fmt.Println("Se ha guardado tu progreso.")
+	utils.WaitForEnter()
+}
+
+func playAudio(contentID int) {
+	content, err := contentService.GetAudioByID(contentID)
+	if err != nil {
+		fmt.Println("Error al cargar contenido.")
+		utils.WaitForEnter()
+		return
+	}
+	
+	utils.ClearScreen()
+	fmt.Printf(" Reproduciendo: %s - %s\n", content.Artist, content.Title)
+	fmt.Println("=====================================")
+	fmt.Println("Simulando reproducción...")
+	fmt.Println("[████████████████████████████] 100%")
+	fmt.Printf("Duración total: %d minutos\n", content.Duration)
+	fmt.Println("=====================================")
+	
+	// Registrar en historial
+	playbackService.AddToHistory(currentUser.ID, contentID, "audio")
+	
+	// Simular progreso (70% escuchado)
+	progressSeconds := (content.Duration * 60) * 7 / 10
+	playbackService.UpdateProgress(currentUser.ID, contentID, "audio", progressSeconds)
+	
+	fmt.Println("\n✓ Reproducción finalizada")
+	fmt.Println("Se ha guardado tu progreso.")
+	utils.WaitForEnter()
+}
+
+func rateContent(contentID int, contentType string) {
+	utils.ClearScreen()
+	fmt.Println("Calificar Contenido")
+	fmt.Println("===================")
+	fmt.Println("Ingrese su calificación (1.0 - 10.0)")
+	ratingStr := utils.ReadLine("Calificación: ")
+	
+	rating, err := utils.ToFloat(ratingStr)
+	if err != nil || rating < 1.0 || rating > 10.0 {
+		fmt.Println("Calificación inválida. Debe ser entre 1.0 y 10.0")
+		utils.WaitForEnter()
+		return
+	}
+	
+	// Guardar calificación
+	err = contentService.RateContent(currentUser.ID, contentID, contentType, rating)
+	if err != nil {
+		fmt.Printf("Error al calificar: %v\n", err)
+	} else {
+		fmt.Printf("¡Gracias! Has calificado este contenido con %.1f\n", rating)
+	}
+	utils.WaitForEnter()
 }

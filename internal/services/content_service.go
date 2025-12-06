@@ -2,8 +2,10 @@
 package services
 
 import (
+	"SDGEStreaming/internal/db"
 	"SDGEStreaming/internal/models"
 	"SDGEStreaming/internal/repositories"
+	"fmt"
 )
 
 // ContentService handles content-related business logic.
@@ -67,4 +69,45 @@ func (s *ContentService) GetAllAudio() ([]models.AudioContent, error) {
 
 func (s *ContentService) SearchAudioByTitle(title string) ([]models.AudioContent, error) {
 	return s.contentRepo.SearchAudioByTitle(title)
+}
+
+// --- CALIFICACIONES ---
+func (s *ContentService) RateContent(userID, contentID int, contentType string, rating float64) error {
+	if rating < 1.0 || rating > 10.0 {
+		return fmt.Errorf("la calificación debe estar entre 1.0 y 10.0")
+	}
+	
+	conn := db.GetDB()
+	
+	// Insertar o actualizar calificación
+	_, err := conn.Exec(`
+		INSERT INTO user_ratings (user_id, content_id, content_type, rating)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, content_id, content_type) 
+		DO UPDATE SET rating = ?, rated_at = CURRENT_TIMESTAMP
+	`, userID, contentID, contentType, rating, rating)
+	
+	if err != nil {
+		return fmt.Errorf("error al guardar calificación: %w", err)
+	}
+	
+	// Recalcular promedio
+	return s.updateAverageRating(contentID, contentType)
+}
+
+func (s *ContentService) updateAverageRating(contentID int, contentType string) error {
+	conn := db.GetDB()
+	var avgRating float64
+	
+	err := conn.QueryRow(`
+		SELECT COALESCE(AVG(rating), 0.0)
+		FROM user_ratings
+		WHERE content_id = ? AND content_type = ?
+	`, contentID, contentType).Scan(&avgRating)
+	
+	if err != nil {
+		return fmt.Errorf("error al calcular promedio: %w", err)
+	}
+	
+	return s.contentRepo.UpdateAverageRating(contentID, contentType, avgRating)
 }
