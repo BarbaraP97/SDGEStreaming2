@@ -14,11 +14,7 @@ func ClearScreen() {
 	fmt.Print("\033[H\033[2J")
 }
 
-// WaitForEnter waits for the user to press Enter.
-func WaitForEnter() {
-	fmt.Print("Presione Enter para continuar...")
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
-}
+
 
 // ReadLine prompts the user and reads input from stdin.
 func ReadLine(prompt string) string {

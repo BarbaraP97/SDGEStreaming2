@@ -155,6 +155,8 @@ func login() {
 	}
 
 	currentUser = user
+	fmt.Printf("DEBUG: currentUser = %+v\n", currentUser)
+	time.Sleep(3 * time.Second)
 	fmt.Printf("\n[OK] Bienvenido, %s!\n", user.Name)
 	time.Sleep(1 * time.Second)
 }
