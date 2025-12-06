@@ -206,6 +206,7 @@ func showProfileSelection() {
 	profiles, err := profileService.GetProfilesByUserID(currentUser.ID)
 	if err != nil || len(profiles) == 0 {
 		fmt.Println("[ERROR] No se encontraron perfiles")
+		time.Sleep(2 * time.Second)
 		currentUser = nil
 		return
 	}
@@ -216,7 +217,11 @@ func showProfileSelection() {
 	fmt.Println()
 	for i, p := range profiles {
 		profileType := map[string]string{"kids": "Ninos", "teen": "Joven", "adult": "Adulto"}[p.Type]
-		fmt.Printf("  [%d] %s (%s)\n", i+1, p.Name, profileType)
+		mainTag := ""
+		if p.IsMain {
+			mainTag = " [PRINCIPAL]"
+		}
+		fmt.Printf("  [%d] %s (%s)%s\n", i+1, p.Name, profileType, mainTag)
 	}
 	fmt.Println()
 	fmt.Println("  [A] Administrar Perfiles")
@@ -422,195 +427,213 @@ func getMaxProfilesForPlan(planID int) int {
 }
 
 func showMainMenu() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Printf("    Perfil: %s\n", currentProfile.Name)
-	fmt.Println("=========================================")
-	fmt.Println()
-	fmt.Println("  [1] Inicio")
-	fmt.Println("  [2] Tendencias")
-	fmt.Println("  [3] Buscar Contenido")
-	fmt.Println("  [4] Mi Lista")
-	fmt.Println("  [5] Mis Playlists")
-	fmt.Println("  [6] Historial")
-	if currentUser.IsAdmin {
-		fmt.Println("  [7] Panel de Administracion")
-		fmt.Println("  [8] Cambiar Perfil")
-		fmt.Println("  [0] Cerrar Sesion")
-	} else {
-		fmt.Println("  [7] Cambiar Perfil")
-		fmt.Println("  [0] Cerrar Sesion")
-	}
-	fmt.Println()
-	fmt.Print("Seleccione: ")
-
-	option := utils.ReadLine("")
-	switch option {
-	case "1":
-		showHome()
-	case "2":
-		showTrending()
-	case "3":
-		searchContent()
-	case "4":
-		showMyList()
-	case "5":
-		managePlaylists()
-	case "6":
-		viewHistory()
-	case "7":
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Printf("    Perfil: %s\n", currentProfile.Name)
+		fmt.Println("=========================================")
+		fmt.Println()
+		fmt.Println("  [1] Inicio")
+		fmt.Println("  [2] Tendencias")
+		fmt.Println("  [3] Buscar Contenido")
+		fmt.Println("  [4] Mi Lista")
+		fmt.Println("  [5] Mis Playlists")
+		fmt.Println("  [6] Historial")
 		if currentUser.IsAdmin {
-			showAdminPanel()
+			fmt.Println("  [7] Panel de Administracion")
+			fmt.Println("  [8] Cambiar Perfil")
+			fmt.Println("  [0] Cerrar Sesion")
 		} else {
-			currentProfile = nil
+			fmt.Println("  [7] Cambiar Perfil")
+			fmt.Println("  [0] Cerrar Sesion")
 		}
-	case "8":
-		if currentUser.IsAdmin {
+		fmt.Println()
+		fmt.Print("Seleccione: ")
+
+		option := utils.ReadLine("")
+		switch option {
+		case "1":
+			showHome()
+		case "2":
+			showTrending()
+		case "3":
+			searchContent()
+		case "4":
+			showMyList()
+		case "5":
+			managePlaylists()
+		case "6":
+			viewHistory()
+		case "7":
+			if currentUser.IsAdmin {
+				showAdminPanel()
+			} else {
+				currentProfile = nil
+				return
+			}
+		case "8":
+			if currentUser.IsAdmin {
+				currentProfile = nil
+				return
+			}
+		case "0":
+			currentUser = nil
 			currentProfile = nil
+			return
+		default:
+			fmt.Println("\n[ERROR] Opcion invalida")
+			time.Sleep(1 * time.Second)
 		}
-	case "0":
-		currentUser = nil
-		currentProfile = nil
-	default:
-		fmt.Println("\n[ERROR] Opcion invalida")
-		time.Sleep(1 * time.Second)
 	}
 }
 
 func showHome() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("               Inicio                    ")
-	fmt.Println("=========================================")
-	fmt.Println()
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Println("               Inicio                    ")
+		fmt.Println("=========================================")
+		fmt.Println()
 
-	// Continuar viendo
-	continueWatching, _ := playbackService.GetContinueWatching(currentProfile.ID)
-	if len(continueWatching) > 0 {
-		fmt.Println("--- Continuar viendo ---")
-		for i, entry := range continueWatching {
+		continueWatching, _ := playbackService.GetContinueWatching(currentProfile.ID)
+		if len(continueWatching) > 0 {
+			fmt.Println("--- Continuar viendo ---")
+			for i, entry := range continueWatching {
+				if i >= 5 {
+					break
+				}
+				var title string
+				if entry.ContentType == "audiovisual" {
+					content, _ := contentService.GetAudiovisualByID(entry.ContentID)
+					if content != nil {
+						title = content.Title
+						progress := 0
+						if content.Duration > 0 {
+							progress = (entry.Progress * 100) / (content.Duration * 60)
+						}
+						fmt.Printf("  [%d] %s (%d%% visto)\n", entry.ContentID, title, progress)
+					}
+				} else {
+					content, _ := contentService.GetAudioByID(entry.ContentID)
+					if content != nil {
+						title = content.Title
+						progress := 0
+						if content.Duration > 0 {
+							progress = (entry.Progress * 100) / (content.Duration * 60)
+						}
+						fmt.Printf("  [%d] %s - %s (%d%% escuchado)\n", entry.ContentID, content.Artist, title, progress)
+					}
+				}
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("--- Recomendado para ti ---")
+		recommendations := playbackService.GetRecommendations(currentProfile.ID, currentProfile.AgeRating)
+		for i, content := range recommendations {
 			if i >= 5 {
 				break
 			}
-			var title string
-			if entry.ContentType == "audiovisual" {
-				content, _ := contentService.GetAudiovisualByID(entry.ContentID)
-				if content != nil {
-					title = content.Title
-					progress := (entry.Progress * 100) / (content.Duration * 60)
-					fmt.Printf("  [%d] %s (%d%% visto)\n", entry.ContentID, title, progress)
-				}
-			} else {
-				content, _ := contentService.GetAudioByID(entry.ContentID)
-				if content != nil {
-					title = content.Title
-					progress := (entry.Progress * 100) / (content.Duration * 60)
-					fmt.Printf("  [%d] %s - %s (%d%% escuchado)\n", entry.ContentID, content.Artist, title, progress)
-				}
+			switch c := content.(type) {
+			case models.AudiovisualContent:
+				fmt.Printf("  [%d] %s (%s) - %.1f/10\n", c.ID, c.Title, c.Type, c.AverageRating)
+			case models.AudioContent:
+				fmt.Printf("  [%d] %s - %s - %.1f/10\n", c.ID, c.Artist, c.Title, c.AverageRating)
 			}
 		}
+
 		fmt.Println()
-	}
-
-	// Recomendaciones
-	fmt.Println("--- Recomendado para ti ---")
-	recommendations := playbackService.GetRecommendations(currentProfile.ID, currentProfile.AgeRating)
-	for i, content := range recommendations {
-		if i >= 5 {
-			break
+		fmt.Println("  [0] Volver")
+		fmt.Print("\nIngrese ID para reproducir (0 para volver): ")
+		idStr := utils.ReadLine("")
+		if idStr == "0" {
+			return
 		}
-		switch c := content.(type) {
-		case models.AudiovisualContent:
-			fmt.Printf("  [%d] %s (%s) - %.1f/10\n", c.ID, c.Title, c.Type, c.AverageRating)
-		case models.AudioContent:
-			fmt.Printf("  [%d] %s - %s - %.1f/10\n", c.ID, c.Artist, c.Title, c.AverageRating)
-		}
-	}
 
-	fmt.Println()
-	fmt.Println("  [0] Volver")
-	fmt.Print("\nSeleccione ID para reproducir (0 para volver): ")
-	idStr := utils.ReadLine("")
-	if idStr == "0" {
-		return
-	}
-	
-	id, err := utils.ToInt(idStr)
-	if err == nil {
-		playContentByID(id)
+		id, err := utils.ToInt(idStr)
+		if err == nil {
+			playContentByID(id)
+		}
 	}
 }
 
 func showTrending() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("             Tendencias                  ")
-	fmt.Println("=========================================")
-	fmt.Println()
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Println("             Tendencias                  ")
+		fmt.Println("=========================================")
+		fmt.Println()
 
-	fmt.Println("--- Contenido Audiovisual Popular ---")
-	audiovisuals, _ := contentService.GetAllAudiovisual()
-	count := 0
-	for _, av := range audiovisuals {
-		if isContentAllowedForProfile(av.AgeRating, currentProfile.AgeRating) {
-			fmt.Printf("  [%d] %s (%s) - %.1f/10\n", av.ID, av.Title, av.Genre, av.AverageRating)
-			count++
-			if count >= 5 {
-				break
+		fmt.Println("--- Contenido Audiovisual Popular ---")
+		audiovisuals, _ := contentService.GetAllAudiovisual()
+		count := 0
+		for _, av := range audiovisuals {
+			if isContentAllowedForProfile(av.AgeRating, currentProfile.AgeRating) {
+				fmt.Printf("  [%d] %s (%s) - %.1f/10\n", av.ID, av.Title, av.Genre, av.AverageRating)
+				count++
+				if count >= 5 {
+					break
+				}
 			}
 		}
-	}
 
-	fmt.Println("\n--- Contenido de Audio Popular ---")
-	audios, _ := contentService.GetAllAudio()
-	count = 0
-	for _, a := range audios {
-		if isContentAllowedForProfile(a.AgeRating, currentProfile.AgeRating) {
-			fmt.Printf("  [%d] %s - %s (%.1f/10)\n", a.ID, a.Artist, a.Title, a.AverageRating)
-			count++
-			if count >= 5 {
-				break
+		fmt.Println("\n--- Contenido de Audio Popular ---")
+		audios, _ := contentService.GetAllAudio()
+		count = 0
+		for _, a := range audios {
+			if isContentAllowedForProfile(a.AgeRating, currentProfile.AgeRating) {
+				fmt.Printf("  [%d] %s - %s (%.1f/10)\n", a.ID, a.Artist, a.Title, a.AverageRating)
+				count++
+				if count >= 5 {
+					break
+				}
 			}
 		}
-	}
 
-	fmt.Println()
-	fmt.Println("  [0] Volver")
-	fmt.Print("\nSeleccione ID para reproducir (0 para volver): ")
-	idStr := utils.ReadLine("")
-	if idStr == "0" {
-		return
-	}
-	
-	id, err := utils.ToInt(idStr)
-	if err == nil {
-		playContentByID(id)
+		fmt.Println()
+		fmt.Println("  [0] Volver")
+		fmt.Print("\nIngrese ID para reproducir (0 para volver): ")
+		idStr := utils.ReadLine("")
+		if idStr == "0" {
+			return
+		}
+
+		id, err := utils.ToInt(idStr)
+		if err == nil {
+			playContentByID(id)
+		}
 	}
 }
 
 func searchContent() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("          Buscar Contenido               ")
-	fmt.Println("=========================================")
-	fmt.Println()
-	fmt.Println("  [1] Buscar por Titulo")
-	fmt.Println("  [2] Buscar por Genero")
-	fmt.Println("  [3] Buscar por Actor")
-	fmt.Println("  [0] Volver")
-	fmt.Println()
-	fmt.Print("Seleccione: ")
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Println("          Buscar Contenido               ")
+		fmt.Println("=========================================")
+		fmt.Println()
+		fmt.Println("  [1] Buscar por Titulo")
+		fmt.Println("  [2] Buscar por Genero")
+		fmt.Println("  [3] Buscar por Actor")
+		fmt.Println("  [0] Volver")
+		fmt.Println()
+		fmt.Print("Seleccione: ")
 
-	option := utils.ReadLine("")
-	switch option {
-	case "1":
-		searchByTitle()
-	case "2":
-		searchByGenre()
-	case "3":
-		searchByActor()
-	case "0":
-		return
+		option := utils.ReadLine("")
+		switch option {
+		case "1":
+			searchByTitle()
+		case "2":
+			searchByGenre()
+		case "3":
+			searchByActor()
+		case "0":
+			return
+		default:
+			fmt.Println("\n[ERROR] Opcion invalida")
+			time.Sleep(1 * time.Second)
+		}
 	}
 }
 
@@ -947,59 +970,55 @@ func rateContent(contentID int, contentType string) {
 }
 
 func showMyList() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("              Mi Lista                   ")
-	fmt.Println("=========================================")
-	fmt.Println()
-
-	favorites, err := playbackService.GetFavorites(currentProfile.ID)
-	if err != nil {
-		fmt.Printf("[ERROR] %v\n", err)
-		time.Sleep(2 * time.Second)
-		return
-	}
-
-	if len(favorites) == 0 {
-		fmt.Println("[INFO] No tienes ningun contenido en tu lista")
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Println("              Mi Lista                   ")
+		fmt.Println("=========================================")
 		fmt.Println()
-		fmt.Println("  [0] Volver")
-		utils.ReadLine("")
-		return
-	}
 
-	fmt.Println("Contenido en tu lista:")
-	for _, fav := range favorites {
-		var title, details string
-		if fav.ContentType == "audiovisual" {
-			content, _ := contentService.GetAudiovisualByID(fav.ContentID)
-			if content != nil {
-				title = content.Title
-				details = fmt.Sprintf("[%s] %s", content.Type, content.Genre)
-				fmt.Printf("  [%d] %s\n", content.ID, title)
-				fmt.Printf("       %s\n", details)
-			}
-		} else {
-			content, _ := contentService.GetAudioByID(fav.ContentID)
-			if content != nil {
-				title = fmt.Sprintf("%s - %s", content.Artist, content.Title)
-				details = fmt.Sprintf("[%s] %s", content.Type, content.Genre)
-				fmt.Printf("  [%d] %s\n", content.ID, title)
-				fmt.Printf("       %s\n", details)
+		favorites, err := playbackService.GetFavorites(currentProfile.ID)
+		if err != nil {
+			fmt.Printf("[ERROR] %v\n", err)
+			time.Sleep(2 * time.Second)
+			return
+		}
+
+		if len(favorites) == 0 {
+			fmt.Println("[INFO] No tienes ningun contenido en tu lista")
+			fmt.Println()
+			fmt.Println("  [0] Volver")
+			fmt.Print("\nPresione 0 para volver: ")
+			utils.ReadLine("")
+			return
+		}
+
+		fmt.Println("Contenido en tu lista:")
+		for _, fav := range favorites {
+			if fav.ContentType == "audiovisual" {
+				content, _ := contentService.GetAudiovisualByID(fav.ContentID)
+				if content != nil {
+					fmt.Printf("  [%d] %s [%s] %s\n", content.ID, content.Title, content.Type, content.Genre)
+				}
+			} else {
+				content, _ := contentService.GetAudioByID(fav.ContentID)
+				if content != nil {
+					fmt.Printf("  [%d] %s - %s [%s]\n", content.ID, content.Artist, content.Title, content.Type)
+				}
 			}
 		}
-	}
-	fmt.Println()
-	fmt.Println("  [0] Volver")
-	fmt.Print("\nSeleccione ID para reproducir (0 para volver): ")
-	idStr := utils.ReadLine("")
-	if idStr == "0" {
-		return
-	}
-	
-	id, err := utils.ToInt(idStr)
-	if err == nil {
-		playContentByID(id)
+		fmt.Println()
+		fmt.Println("  [0] Volver")
+		fmt.Print("\nIngrese ID para reproducir (0 para volver): ")
+		idStr := utils.ReadLine("")
+		if idStr == "0" {
+			return
+		}
+
+		id, err := utils.ToInt(idStr)
+		if err == nil {
+			playContentByID(id)
+		}
 	}
 }
 
@@ -1044,31 +1063,6 @@ func managePlaylists() {
 			return
 		}
 	}
-}
-
-func createPlaylist() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("          Crear Playlist                 ")
-	fmt.Println("=========================================")
-	fmt.Println()
-
-	name := utils.ReadLine("Nombre de la playlist: ")
-	if name == "" {
-		fmt.Println("\n[ERROR] El nombre no puede estar vacio")
-		time.Sleep(2 * time.Second)
-		return
-	}
-
-	description := utils.ReadLine("Descripcion (opcional): ")
-
-	_, err := playlistService.CreatePlaylist(currentProfile.ID, name, description)
-	if err != nil {
-		fmt.Printf("\n[ERROR] %v\n", err)
-	} else {
-		fmt.Println("\n[OK] Playlist creada exitosamente")
-	}
-	time.Sleep(2 * time.Second)
 }
 
 func viewPlaylist(playlists []models.Playlist) {
@@ -1134,7 +1128,6 @@ func viewPlaylist(playlists []models.Playlist) {
 			idStr := utils.ReadLine("")
 			id, err := utils.ToInt(idStr)
 			if err == nil {
-				// Buscar tipo de contenido
 				contentType := "audiovisual"
 				_, err := contentService.GetAudiovisualByID(id)
 				if err != nil {
@@ -1150,6 +1143,98 @@ func viewPlaylist(playlists []models.Playlist) {
 			}
 		case "0":
 			return
+		default:
+			fmt.Println("\n[ERROR] Opcion invalida")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func createPlaylist() {
+	utils.ClearScreen()
+	fmt.Println("=========================================")
+	fmt.Println("          Crear Playlist                 ")
+	fmt.Println("=========================================")
+	fmt.Println()
+
+	name := utils.ReadLine("Nombre de la playlist: ")
+	if name == "" {
+		fmt.Println("\n[ERROR] El nombre no puede estar vacio")
+		time.Sleep(2 * time.Second)
+		return
+	}
+
+	description := utils.ReadLine("Descripcion (opcional): ")
+
+	_, err := playlistService.CreatePlaylist(currentProfile.ID, name, description)
+	if err != nil {
+		fmt.Printf("\n[ERROR] %v\n", err)
+	} else {
+		fmt.Println("\n[OK] Playlist creada exitosamente")
+	}
+	time.Sleep(2 * time.Second)
+}
+
+func viewHistory() {
+	for {
+		utils.ClearScreen()
+		fmt.Println("=========================================")
+		fmt.Println("       Historial de Reproduccion         ")
+		fmt.Println("=========================================")
+		fmt.Println()
+
+		history, err := playbackService.GetHistory(currentProfile.ID)
+		if err != nil {
+			fmt.Printf("[ERROR] %v\n", err)
+			time.Sleep(2 * time.Second)
+			return
+		}
+
+		if len(history) == 0 {
+			fmt.Println("[INFO] No tienes historial de reproduccion")
+			fmt.Println()
+			fmt.Println("  [0] Volver")
+			fmt.Print("\nPresione 0 para volver: ")
+			utils.ReadLine("")
+			return
+		}
+
+		fmt.Println("Tus ultimas reproducciones:")
+		for i, entry := range history {
+			if i >= 20 {
+				break
+			}
+			if entry.ContentType == "audiovisual" {
+				content, _ := contentService.GetAudiovisualByID(entry.ContentID)
+				if content != nil {
+					progress := 0
+					if content.Duration > 0 {
+						progress = (entry.Progress * 100) / (content.Duration * 60)
+					}
+					fmt.Printf("  [%d] %s (%d%% visto)\n", content.ID, content.Title, progress)
+				}
+			} else {
+				content, _ := contentService.GetAudioByID(entry.ContentID)
+				if content != nil {
+					progress := 0
+					if content.Duration > 0 {
+						progress = (entry.Progress * 100) / (content.Duration * 60)
+					}
+					fmt.Printf("  [%d] %s - %s (%d%%)\n", content.ID, content.Artist, content.Title, progress)
+				}
+			}
+		}
+		fmt.Println()
+		fmt.Println("  [0] Volver")
+		fmt.Print("\nIngrese ID para reproducir (0 para volver): ")
+		idStr := utils.ReadLine("")
+		if idStr == "0" {
+			return
+		}
+
+		id, err := utils.ToInt(idStr)
+		if err == nil {
+			playContentByID(id)
 		}
 	}
 }
@@ -1212,70 +1297,6 @@ func addToPlaylist(contentID int, contentType string) {
 		fmt.Printf("\n[OK] Agregado a '%s'\n", playlist.Name)
 	}
 	time.Sleep(2 * time.Second)
-}
-
-func viewHistory() {
-	utils.ClearScreen()
-	fmt.Println("=========================================")
-	fmt.Println("       Historial de Reproduccion         ")
-	fmt.Println("=========================================")
-	fmt.Println()
-
-	history, err := playbackService.GetHistory(currentProfile.ID)
-	if err != nil {
-		fmt.Printf("[ERROR] %v\n", err)
-		time.Sleep(2 * time.Second)
-		return
-	}
-
-	if len(history) == 0 {
-		fmt.Println("[INFO] No tienes historial de reproduccion")
-		fmt.Println()
-		fmt.Println("  [0] Volver")
-		utils.ReadLine("")
-		return
-	}
-
-	fmt.Println("Tus ultimas reproducciones:")
-	for i, entry := range history {
-		if i >= 20 {
-			break
-		}
-		var title string
-		if entry.ContentType == "audiovisual" {
-			content, _ := contentService.GetAudiovisualByID(entry.ContentID)
-			if content != nil {
-				title = content.Title
-				progress := 0
-				if content.Duration > 0 {
-					progress = (entry.Progress * 100) / (content.Duration * 60)
-				}
-				fmt.Printf("  [%d] %s (%d%% visto)\n", content.ID, title, progress)
-			}
-		} else {
-			content, _ := contentService.GetAudioByID(entry.ContentID)
-			if content != nil {
-				title = content.Title
-				progress := 0
-				if content.Duration > 0 {
-					progress = (entry.Progress * 100) / (content.Duration * 60)
-				}
-				fmt.Printf("  [%d] %s - %s (%d%%)\n", content.ID, content.Artist, title, progress)
-			}
-		}
-	}
-	fmt.Println()
-	fmt.Println("  [0] Volver")
-	fmt.Print("\nSeleccione ID para reproducir (0 para volver): ")
-	idStr := utils.ReadLine("")
-	if idStr == "0" {
-		return
-	}
-	
-	id, err := utils.ToInt(idStr)
-	if err == nil {
-		playContentByID(id)
-	}
 }
 
 func isContentAllowedForProfile(contentRating, profileRating string) bool {
