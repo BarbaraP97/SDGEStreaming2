@@ -119,8 +119,15 @@ func (s *PlaybackService) GetRecommendations(userID int) ([]interface{}, error) 
 
 	if len(favorites) == 0 {
 		// Si no hay favoritos, devolver contenido popular (los primeros 5)
-		audiovisuals, _ := s.contentRepo.FindAllAudiovisual()
-		audios, _ := s.contentRepo.FindAllAudio()
+		audiovisuals, err := s.contentRepo.FindAllAudiovisual()
+if err != nil {
+    // log o devolver error
+    return nil, fmt.Errorf("no se pudo obtener contenido audiovisual: %w", err)
+}
+audios, err := s.contentRepo.FindAllAudio()
+if err != nil {
+    return nil, fmt.Errorf("no se pudo obtener contenido de audio: %w", err)
+}
 		var recommendations []interface{}
 		for i, av := range audiovisuals {
 			if i >= 3 {
