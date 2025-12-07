@@ -173,7 +173,7 @@ func register() {
 		return
 	}
 
-	_, err = userService.Register(name, age, email, password, "Adulto", false)
+	_, err := userService.Register(name, age, email, password, false)
 	if err != nil {
 		fmt.Printf("Error en el registro: %v\n", err)
 	} else {
