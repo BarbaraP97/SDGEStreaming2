@@ -7,9 +7,12 @@ type Plan struct {
 	ID    int     `db:"id"`
 	Name  string  `db:"name"`
 	Price float64 `db:"price"`
+	MaxQuality string  `db:"max_quality"`
+	MaxDevices int     `db:"max_devices"`
 }
 
 // Subscription representa la suscripción de un usuario a un plan.
+
 type Subscription struct {
 	ID        int       `db:"id"`
 	UserID    int       `db:"user_id"`
