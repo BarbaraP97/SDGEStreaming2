@@ -47,24 +47,32 @@ func main() {
 	defer db.Close()
 
 	// Crear usuario admin si no existe
-	userRepo := repositories.NewUserRepo()
-	adminUser, _ := userRepo.FindByEmail("admin@sdge.com")
-	if adminUser == nil {
-		hashedPass, _ := security.HashPassword("admin123")
-		now := time.Now()
-		adminModel := &models.User{
-			Name:         "Admin",
-			Email:        "admin@sdge.com",
-			Age:          30,
-			PlanID:       3,
-			AgeRating:    "Adulto",
-			IsAdmin:      true,
-			PasswordHash: hashedPass,
-			CreatedAt:    now,
-			LastLogin:    now,
-		}
-		userRepo.Create(adminModel)
-	}
+	adminUser, err := userRepo.FindByEmail("admin@sdge.com")
+if err != nil {
+    fmt.Printf("Error buscando usuario admin: %v\n", err)
+}
+if adminUser == nil {
+    hashedPass, err := security.HashPassword("admin123")
+    if err != nil {
+        fmt.Printf("Error generando contraseña del admin: %v\n", err)
+    } else {
+        now := time.Now()
+        adminModel := &models.User{
+            Name:         "Admin",
+            Email:        "admin@sdge.com",
+            Age:          30,
+            PlanID:       3,
+            AgeRating:    "Adulto",
+            IsAdmin:      true,
+            PasswordHash: hashedPass,
+            CreatedAt:    now,
+            LastLogin:    now,
+        }
+        if err := userRepo.Create(adminModel); err != nil {
+            fmt.Printf("Error creando usuario admin: %v\n", err)
+        }
+    }
+}
 
 	contentRepo := repositories.NewContentRepo()
 	subscriptionRepo := repositories.NewSubscriptionRepo()
