@@ -18,7 +18,14 @@ import (
 )
 
 var (
-	currentUser *CurrentUser
+    currentUser *CurrentUser
+
+    userService         *services.UserService
+    contentService      *services.ContentService
+    subscriptionService *services.SubscriptionService
+    playbackService     *services.PlaybackService
+
+    userRepo repositories.UserRepo
 )
 
 type CurrentUser struct {
@@ -45,9 +52,21 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-
+	
+// INICIALIZAR REPOS
+    userRepo = repositories.NewUserRepo()
+    contentRepo := repositories.NewContentRepo()
+    subscriptionRepo := repositories.NewSubscriptionRepo()
+    playbackHistoryRepo := repositories.NewPlaybackHistoryRepo()
+    favoriteRepo := repositories.NewFavoriteRepo()
+	
 	// Crear usuario admin si no existe
 	adminUser, err := userRepo.FindByEmail("admin@sdge.com")
+	userService = services.NewUserService(userRepo, subscriptionRepo)
+    contentService = services.NewContentService(contentRepo)
+    subscriptionService = services.NewSubscriptionService(subscriptionRepo, userRepo)
+    playbackService = services.NewPlaybackService(playbackHistoryRepo, favoriteRepo, contentRepo)
+	
 if err != nil {
     fmt.Printf("Error buscando usuario admin: %v\n", err)
 }
