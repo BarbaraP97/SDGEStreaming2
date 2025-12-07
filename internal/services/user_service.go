@@ -20,50 +20,65 @@ func NewUserService(userRepo repositories.UserRepo, subscriptionRepo repositorie
 	return &UserService{userRepo: userRepo, subscriptionRepo: subscriptionRepo}
 }
 
-func (s *UserService) Register(name string, age int, email, password, ageRating string, isAdmin bool) (*models.User, error) {
-	if !utils.IsValidName(name) {
-		return nil, fmt.Errorf("nombre inválido")
-	}
-	if age < 13 || age > 120 {
-		return nil, fmt.Errorf("edad debe estar entre 13 y 120 años")
-	}
-	if !utils.IsValidEmail(email) {
-		return nil, fmt.Errorf("email inválido")
-	}
-	if !utils.IsValidPassword(password) {
-		return nil, fmt.Errorf("contraseña debe tener al menos 6 caracteres")
-	}
+func (s *UserService) Register(name string, age int, email, password string, isAdmin bool) (*models.User, error) {
+    if !utils.IsValidName(name) {
+        return nil, fmt.Errorf("nombre inválido")
+    }
+    if age < 13 || age > 120 {
+        return nil, fmt.Errorf("edad debe estar entre 13 y 120 años")
+    }
+    if !utils.IsValidEmail(email) {
+        return nil, fmt.Errorf("email inválido")
+    }
+    if !utils.IsValidPassword(password) {
+        return nil, fmt.Errorf("contraseña debe tener al menos 6 caracteres")
+    }
 
-	if existing, _ := s.userRepo.FindByEmail(email); existing != nil {
-		return nil, fmt.Errorf("el email ya está registrado")
-	}
+    if existing, _ := s.userRepo.FindByEmail(email); existing != nil {
+        return nil, fmt.Errorf("el email ya está registrado")
+    }
 
-	hashedPass, err := security.HashPassword(password)
-	if err != nil {
-		return nil, fmt.Errorf("error al procesar la contraseña")
-	}
+    hashedPass, err := security.HashPassword(password)
+    if err != nil {
+        return nil, fmt.Errorf("error al procesar la contraseña")
+    }
 
-	now := time.Now()
-	user := &models.User{
-		Name:         name,
-		Age:          age,
-		Email:        email,
-		PasswordHash: hashedPass,
-		PlanID:       1, // plan Free por defecto
-		AgeRating:    ageRating,
-		IsAdmin:      isAdmin,
-		CreatedAt:    now,
-		LastLogin:    now,
-	}
+    // Clasificación de edad simple
+    ageRating := classifyAge(age)
 
-	if err := s.userRepo.Create(user); err != nil {
-		return nil, fmt.Errorf("no se pudo crear la cuenta de usuario: %w", err)
-	}
+    now := time.Now()
+    user := &models.User{
+        Name:         name,
+        Age:          age,
+        Email:        email,
+        PasswordHash: hashedPass,
+        PlanID:       1, // plan Free por defecto
+        AgeRating:    ageRating,
+        IsAdmin:      isAdmin,
+        CreatedAt:    now,
+        LastLogin:    now,
+    }
 
-	// crear suscripción inicial en la tabla subscriptions (opcional)
-	_ = s.subscriptionRepo.UpdateUserPlan(user.ID, 1)
+    if err := s.userRepo.Create(user); err != nil {
+        return nil, fmt.Errorf("no se pudo crear la cuenta de usuario: %w", err)
+    }
 
-	return user, nil
+    // crear suscripción inicial en la tabla subscriptions (opcional)
+    _ = s.subscriptionRepo.UpdateUserPlan(user.ID, 1)
+
+    return user, nil
+}
+
+// función auxiliar en el mismo archivo
+func classifyAge(age int) string {
+    switch {
+    case age < 13:
+        return "Niño"
+    case age < 18:
+        return "Adolescente"
+    default:
+        return "Adulto"
+    }
 }
 
 // Login existing signature kept
