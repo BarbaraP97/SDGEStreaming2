@@ -1,3 +1,4 @@
+// internal/repositories/content_repo.go
 package repositories
 
 import (
@@ -14,307 +15,456 @@ type ContentRepo interface {
 	FindAllAudiovisual() ([]models.AudiovisualContent, error)
 	SearchAudiovisualByTitle(title string) ([]models.AudiovisualContent, error)
 
+	// Audio
 	CreateAudio(content *models.AudioContent) error
 	FindAudioByID(id int) (*models.AudioContent, error)
 	FindAllAudio() ([]models.AudioContent, error)
 	SearchAudioByTitle(title string) ([]models.AudioContent, error)
 
-	// Compartido
-	UpdateAvailability(contentID int, contentType string, available bool) error
-	UpdateAverageRating(contentID int, contentType string, rating float64) error
-	GetDB() *sql.DB
+	// Ratings
+	UpdateAverageRating(contentID int, contentType string, avg float64) error
+
+	// Filtrado por edad
+	FindAllAudiovisualAllowed(userAgeRating string) ([]models.AudiovisualContent, error)
+	FindAllAudioAllowed(userAgeRating string) ([]models.AudioContent, error)
 }
 
-type sqliteContentRepo struct {
-	conn *sql.DB
-}
+type sqliteContentRepo struct{}
 
 func NewContentRepo() ContentRepo {
-	return &sqliteContentRepo{
-		conn: db.GetDB(),
-	}
+	return &sqliteContentRepo{}
 }
 
-func (r *sqliteContentRepo) GetDB() *sql.DB {
-	return r.conn
-}
+// --- AUDIOVISUAL ---
 
-//
-// AUDIOVISUAL
-//
+func (r *sqliteContentRepo) CreateAudiovisual(content *models.AudiovisualContent) error {
+	conn := db.GetDB()
 
-func (r *sqliteContentRepo) CreateAudiovisual(c *models.AudiovisualContent) error {
 	query := `
-		INSERT INTO audiovisual_content
-		(title, type, genre, duration, age_rating, synopsis, release_year, director)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO audiovisual_content (title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.conn.Exec(query,
-		c.Title, c.Type, c.Genre, c.Duration, c.AgeRating,
-		c.Synopsis, c.ReleaseYear, c.Director,
+	result, err := conn.Exec(query,
+		content.Title,
+		content.Type,
+		content.Genre,
+		content.Duration,
+		content.AgeRating,
+		content.Synopsis,
+		content.ReleaseYear,
+		content.Director,
+		content.AverageRating,
+		content.IsAvailable,
 	)
 	if err != nil {
-		return fmt.Errorf("error creating audiovisual content: %w", err)
+		return err
 	}
 
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	content.ID = int(id)
 	return nil
 }
 
 func (r *sqliteContentRepo) FindAudiovisualByID(id int) (*models.AudiovisualContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-		       synopsis, release_year, director,
-		       average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
 		FROM audiovisual_content
 		WHERE id = ?
 	`
 
-	row := r.conn.QueryRow(query, id)
-
 	var c models.AudiovisualContent
-	err := row.Scan(
-		&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-		&c.Synopsis, &c.ReleaseYear, &c.Director,
-		&c.AverageRating, &c.IsAvailable,
+	err := conn.QueryRow(query, id).Scan(
+		&c.ID,
+		&c.Title,
+		&c.Type,
+		&c.Genre,
+		&c.Duration,
+		&c.AgeRating,
+		&c.Synopsis,
+		&c.ReleaseYear,
+		&c.Director,
+		&c.AverageRating,
+		&c.IsAvailable,
 	)
-
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, fmt.Errorf("contenido audiovisual no encontrado")
 	}
-
 	if err != nil {
-		return nil, fmt.Errorf("error scanning audiovisual content: %w", err)
+		return nil, err
 	}
 
 	return &c, nil
 }
 
 func (r *sqliteContentRepo) FindAllAudiovisual() ([]models.AudiovisualContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-			   synopsis, release_year, director,
-			   average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
 		FROM audiovisual_content
-		ORDER BY release_year DESC
+		WHERE is_available = 1
+		ORDER BY average_rating DESC
 	`
 
-	rows, err := r.conn.Query(query)
+	rows, err := conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching audiovisual content: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var list []models.AudiovisualContent
-
+	var contents []models.AudiovisualContent
 	for rows.Next() {
 		var c models.AudiovisualContent
-		if err := rows.Scan(
-			&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-			&c.Synopsis, &c.ReleaseYear, &c.Director,
-			&c.AverageRating, &c.IsAvailable,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning audiovisual row: %w", err)
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Synopsis,
+			&c.ReleaseYear,
+			&c.Director,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
 		}
-		list = append(list, c)
+		contents = append(contents, c)
 	}
 
-	return list, nil
+	return contents, nil
 }
 
 func (r *sqliteContentRepo) SearchAudiovisualByTitle(title string) ([]models.AudiovisualContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-			   synopsis, release_year, director,
-			   average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
 		FROM audiovisual_content
-		WHERE title LIKE ?
-		ORDER BY release_year DESC
+		WHERE title LIKE ? AND is_available = 1
+		ORDER BY average_rating DESC
 	`
-	rows, err := r.conn.Query(query, "%"+title+"%")
+
+	rows, err := conn.Query(query, "%"+title+"%")
 	if err != nil {
-		return nil, fmt.Errorf("error searching audiovisual content by title: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var list []models.AudiovisualContent
+	var contents []models.AudiovisualContent
 	for rows.Next() {
 		var c models.AudiovisualContent
-		if err := rows.Scan(
-			&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-			&c.Synopsis, &c.ReleaseYear, &c.Director,
-			&c.AverageRating, &c.IsAvailable,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning audiovisual row: %w", err)
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Synopsis,
+			&c.ReleaseYear,
+			&c.Director,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
 		}
-		list = append(list, c)
+		contents = append(contents, c)
 	}
-	return list, nil
+
+	return contents, nil
 }
 
-//
-// AUDIO
-//
+func (r *sqliteContentRepo) FindAllAudiovisualAllowed(userAgeRating string) ([]models.AudiovisualContent, error) {
+	conn := db.GetDB()
 
-func (r *sqliteContentRepo) CreateAudio(c *models.AudioContent) error {
-	query := `
-		INSERT INTO audio_content
-		(title, type, genre, duration, age_rating, artist, album, track_number)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
+	var query string
 
-	_, err := r.conn.Exec(query,
-		c.Title, c.Type, c.Genre, c.Duration, c.AgeRating,
-		c.Artist, c.Album, c.TrackNumber,
-	)
-	if err != nil {
-		return fmt.Errorf("error creating audio content: %w", err)
+	// Regla simple:
+	// - Niño: solo G
+	// - Adolescente: G, PG, PG-13
+	// - Adulto: todo lo disponible
+	switch userAgeRating {
+	case "Niño":
+		query = `
+			SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
+			FROM audiovisual_content
+			WHERE age_rating IN ('G') AND is_available = 1
+			ORDER BY average_rating DESC
+		`
+	case "Adolescente":
+		query = `
+			SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
+			FROM audiovisual_content
+			WHERE age_rating IN ('G', 'PG', 'PG-13') AND is_available = 1
+			ORDER BY average_rating DESC
+		`
+	default: // Adulto u otros
+		query = `
+			SELECT id, title, type, genre, duration, age_rating, synopsis, release_year, director, average_rating, is_available
+			FROM audiovisual_content
+			WHERE is_available = 1
+			ORDER BY average_rating DESC
+		`
 	}
 
+	rows, err := conn.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []models.AudiovisualContent
+	for rows.Next() {
+		var c models.AudiovisualContent
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Synopsis,
+			&c.ReleaseYear,
+			&c.Director,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
+		}
+		contents = append(contents, c)
+	}
+
+	return contents, nil
+}
+
+// --- AUDIO ---
+
+func (r *sqliteContentRepo) CreateAudio(content *models.AudioContent) error {
+	conn := db.GetDB()
+
+	query := `
+		INSERT INTO audio_content (title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	result, err := conn.Exec(query,
+		content.Title,
+		content.Type,
+		content.Genre,
+		content.Duration,
+		content.AgeRating,
+		content.Artist,
+		content.Album,
+		content.TrackNumber,
+		content.AverageRating,
+		content.IsAvailable,
+	)
+	if err != nil {
+		return err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	content.ID = int(id)
 	return nil
 }
 
 func (r *sqliteContentRepo) FindAudioByID(id int) (*models.AudioContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-		       artist, album, track_number,
-		       average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available
 		FROM audio_content
 		WHERE id = ?
 	`
 
-	row := r.conn.QueryRow(query, id)
-
 	var c models.AudioContent
-	err := row.Scan(
-		&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-		&c.Artist, &c.Album, &c.TrackNumber,
-		&c.AverageRating, &c.IsAvailable,
+	err := conn.QueryRow(query, id).Scan(
+		&c.ID,
+		&c.Title,
+		&c.Type,
+		&c.Genre,
+		&c.Duration,
+		&c.AgeRating,
+		&c.Artist,
+		&c.Album,
+		&c.TrackNumber,
+		&c.AverageRating,
+		&c.IsAvailable,
 	)
-
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, fmt.Errorf("contenido de audio no encontrado")
 	}
-
 	if err != nil {
-		return nil, fmt.Errorf("error scanning audio content: %w", err)
+		return nil, err
 	}
 
 	return &c, nil
 }
 
 func (r *sqliteContentRepo) FindAllAudio() ([]models.AudioContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-		       artist, album, track_number,
-		       average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available
 		FROM audio_content
-		ORDER BY id DESC
+		WHERE is_available = 1
+		ORDER BY average_rating DESC
 	`
 
-	rows, err := r.conn.Query(query)
+	rows, err := conn.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching audio content: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var list []models.AudioContent
-
+	var contents []models.AudioContent
 	for rows.Next() {
 		var c models.AudioContent
-		if err := rows.Scan(
-			&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-			&c.Artist, &c.Album, &c.TrackNumber,
-			&c.AverageRating, &c.IsAvailable,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning audio row: %w", err)
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Artist,
+			&c.Album,
+			&c.TrackNumber,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
 		}
-		list = append(list, c)
+		contents = append(contents, c)
 	}
 
-	return list, nil
+	return contents, nil
 }
 
 func (r *sqliteContentRepo) SearchAudioByTitle(title string) ([]models.AudioContent, error) {
+	conn := db.GetDB()
+
 	query := `
-		SELECT id, title, type, genre, duration, age_rating,
-			   artist, album, track_number,
-			   average_rating, is_available
+		SELECT id, title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available
 		FROM audio_content
-		WHERE title LIKE ?
-		ORDER BY id DESC
+		WHERE title LIKE ? AND is_available = 1
+		ORDER BY average_rating DESC
 	`
-	rows, err := r.conn.Query(query, "%"+title+"%")
+
+	rows, err := conn.Query(query, "%"+title+"%")
 	if err != nil {
-		return nil, fmt.Errorf("error searching audio content by title: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var list []models.AudioContent
+	var contents []models.AudioContent
 	for rows.Next() {
 		var c models.AudioContent
-		if err := rows.Scan(
-			&c.ID, &c.Title, &c.Type, &c.Genre, &c.Duration, &c.AgeRating,
-			&c.Artist, &c.Album, &c.TrackNumber,
-			&c.AverageRating, &c.IsAvailable,
-		); err != nil {
-			return nil, fmt.Errorf("error scanning audio row: %w", err)
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Artist,
+			&c.Album,
+			&c.TrackNumber,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
 		}
-		list = append(list, c)
+		contents = append(contents, c)
 	}
-	return list, nil
+
+	return contents, nil
 }
 
-//
-// COMPARTIDO (audiovisual | audio)
-//
+func (r *sqliteContentRepo) FindAllAudioAllowed(userAgeRating string) ([]models.AudioContent, error) {
+	conn := db.GetDB()
 
-func (r *sqliteContentRepo) UpdateAvailability(id int, contentType string, available bool) error {
-	var table string
+	var query string
 
-	if contentType == "audiovisual" {
-		table = "audiovisual_content"
-	} else if contentType == "audio" {
-		table = "audio_content"
-	} else {
-		return fmt.Errorf("invalid content type")
+	// Regla simple:
+	// - Niño, Adolescente: solo General
+	// - Adulto: General y Explicit
+	switch userAgeRating {
+	case "Niño", "Adolescente":
+		query = `
+			SELECT id, title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available
+			FROM audio_content
+			WHERE age_rating = 'General' AND is_available = 1
+			ORDER BY average_rating DESC
+		`
+	default: // Adulto
+		query = `
+			SELECT id, title, type, genre, duration, age_rating, artist, album, track_number, average_rating, is_available
+			FROM audio_content
+			WHERE is_available = 1
+			ORDER BY average_rating DESC
+		`
 	}
 
-	query := fmt.Sprintf(`
-		UPDATE %s
-		SET is_available = ?
-		WHERE id = ?
-	`, table)
-
-	_, err := r.conn.Exec(query, available, id)
+	rows, err := conn.Query(query)
 	if err != nil {
-		return fmt.Errorf("error updating availability: %w", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []models.AudioContent
+	for rows.Next() {
+		var c models.AudioContent
+		err := rows.Scan(
+			&c.ID,
+			&c.Title,
+			&c.Type,
+			&c.Genre,
+			&c.Duration,
+			&c.AgeRating,
+			&c.Artist,
+			&c.Album,
+			&c.TrackNumber,
+			&c.AverageRating,
+			&c.IsAvailable,
+		)
+		if err != nil {
+			return nil, err
+		}
+		contents = append(contents, c)
 	}
 
-	return nil
+	return contents, nil
 }
 
-func (r *sqliteContentRepo) UpdateAverageRating(id int, contentType string, rating float64) error {
-	var table string
+// --- RATINGS ---
 
+func (r *sqliteContentRepo) UpdateAverageRating(contentID int, contentType string, avg float64) error {
+	conn := db.GetDB()
+
+	var query string
 	if contentType == "audiovisual" {
-		table = "audiovisual_content"
-	} else if contentType == "audio" {
-		table = "audio_content"
+		query = `UPDATE audiovisual_content SET average_rating = ? WHERE id = ?`
 	} else {
-		return fmt.Errorf("invalid content type")
+		query = `UPDATE audio_content SET average_rating = ? WHERE id = ?`
 	}
 
-	query := fmt.Sprintf(`
-		UPDATE %s
-		SET average_rating = ?
-		WHERE id = ?
-	`, table)
-
-	_, err := r.conn.Exec(query, rating, id)
-	if err != nil {
-		return fmt.Errorf("error updating rating: %w", err)
-	}
-
-	return nil
+	_, err := conn.Exec(query, avg, contentID)
+	return err
 }
