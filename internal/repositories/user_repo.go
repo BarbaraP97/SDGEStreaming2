@@ -238,13 +238,26 @@ func (r *sqliteUserRepo) AddPaymentMethod(pm *models.PaymentMethod) error {
 	conn := db.GetDB()
 
 	query := `
-		INSERT INTO payment_methods (user_id, card_holder_name, card_number_last4, expiry_month, expiry_year, is_default)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO payment_methods (
+			user_id,
+			card_holder_name,
+			card_number,
+			expiration_date,
+			cvv,
+			card_number_last4,
+			expiry_month,
+			expiry_year,
+			is_default
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := conn.Exec(query,
 		pm.UserID,
 		pm.CardHolder,
+		pm.CardNumber,
+		pm.ExpirationDate,
+		pm.CVV,
 		pm.Last4,
 		pm.ExpiryMonth,
 		pm.ExpiryYear,
