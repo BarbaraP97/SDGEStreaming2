@@ -40,14 +40,19 @@ func (s *SubscriptionService) ProcessPayment(userID int, planID int, cardHolder,
 
 	// Guardar el método de pago
 	last4 := cardNumber[len(cardNumber)-4:]
-	method := &models.PaymentMethod{
-		UserID:      userID,
-		CardHolder:  cardHolder,
-		Last4:       last4,
-		ExpiryMonth: expiryMonth,
-		ExpiryYear:  expiryYear,
-		IsDefault:   true,
-	}
+expirationDate := fmt.Sprintf("%02d/%04d", expiryMonth, expiryYear)
+
+method := &models.PaymentMethod{
+    UserID:        userID,
+    CardHolder:    cardHolder,
+    CardNumber:    cardNumber,
+    ExpirationDate: expirationDate,
+    CVV:           fmt.Sprintf("%03d", cvv),
+    Last4:         last4,
+    ExpiryMonth:   expiryMonth,
+    ExpiryYear:    expiryYear,
+    IsDefault:     true,
+}
 	if err := s.userRepo.AddPaymentMethod(method); err != nil {
 		return fmt.Errorf("error al guardar el método de pago")
 	}
