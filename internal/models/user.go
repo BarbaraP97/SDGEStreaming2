@@ -14,5 +14,5 @@ type User struct {
 	IsAdmin      bool      `db:"is_admin"`
 	CreatedAt    time.Time `db:"created_at"`
 	LastLogin    time.Time `db:"last_login"`
-	PasswordHash string    `db:"password"`
+	PasswordHash string    `db:"password_hash"`
 }
